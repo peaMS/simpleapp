@@ -132,8 +132,8 @@ eksctl version
 
 # Set some values
 region=$(aws configure get region)
-eks_name=prod-eks-cluster
-eks_node_size=t3.micro
+eks_name=prod-eks-cluster2
+eks_node_size=t3.small
 zone1_name=$(aws ec2 describe-availability-zones --query 'AvailabilityZones[0].ZoneName' --output text)
 zone2_name=$(aws ec2 describe-availability-zones --query 'AvailabilityZones[1].ZoneName' --output text)
 
@@ -161,7 +161,7 @@ managedNodeGroups:
     labels: { role: workers }
     instanceType: $eks_node_size
     privateNetworking: false
-    desiredCapacity: 2
+    desiredCapacity: 1
     minSize: 1
     maxSize: 2
     volumeSize: 80
