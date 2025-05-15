@@ -85,7 +85,7 @@ if ($platform == "vm") {
                         }
                     ?>
                     <br>
-                    <h3>Add new log entry</h3>
+                    <h3>Add new log entry (source IP)</h3>
                     <p>Press this button to add your IP address (<?php print($_SERVER['REMOTE_ADDR'])?>) to the log:</p>
                     <form action="index.php#srciplog" method="get">
                         <input type="hidden" id="command" name="command" value="srciplog">
@@ -96,7 +96,23 @@ if ($platform == "vm") {
                             $cmd = "curl --connect-timeout 3 " . getenv("API_URL") . "/api/srciplog?ip=" . $_SERVER['REMOTE_ADDR'];
                             $result_json = shell_exec($cmd);
                             $result = json_decode($result_json, true);
-                            print("<p>IP address added: <b>" . $_SERVER['REMOTE_ADDR'] . "</b></p>");
+                            print("<p>IP address added: <b>" . $_SERVER['REMOTE_ADDR'] . "</b>. Go back to the <a href=\"index.php\">Home</a> page</p>");
+                        }
+                    ?>
+                    <br>
+                    <h3>Add new log entry (custom)</h3>
+                    <p>Press this button to add your IP address (<?php print($_SERVER['REMOTE_ADDR'])?>) to the log:</p>
+                    <form action="index.php#srciplogcustom" method="get">
+                        IP address to add to log: <input type="text" name="ipaddress" value="<?php print($_GET["ipaddress"]); ?>"><br>
+                        <input type="hidden" id="command" name="command" value="srciplogcustom">
+                        <input type="submit">
+                    </form>
+                    <?php 
+                        if (strcmp($_GET["command"], 'srciplogcustom') == 0) {
+                            $cmd = "curl --connect-timeout 3 " . getenv("API_URL") . "/api/srciplog?ip=" . $_GET["ipaddress"];
+                            $result_json = shell_exec($cmd);
+                            $result = json_decode($result_json, true);
+                            print("<p>IP address added: <b>" . $_GET["ipaddress"] . "</b>. Go back to the <a href=\"index.php\">Home</a> page</p>");
                         }
                     ?>
                     <br>
@@ -111,7 +127,22 @@ if ($platform == "vm") {
                             $cmd = "curl --connect-timeout 3 " . getenv("API_URL") . "/api/srcipinit";
                             $result_json = shell_exec($cmd);
                             $result = json_decode($result_json, true);
-                            print("<p>Database initialized successfully</p>");
+                            print("<p>Database initialized successfully. Go back to the <a href=\"index.php\">Home</a> page</p>");
+                        }
+                    ?>
+                    <br>
+                    <h3>Access IMDS</h3>
+                    <p>Press this button to get the node's hostname from the IMDS service (v1):</p>
+                    <form action="index.php#imds" method="get">
+                        <input type="hidden" id="command" name="command" value="imds">
+                        <input type="submit">
+                    </form>
+                    <?php 
+                        if (strcmp($_GET["command"], 'imds') == 0) {
+                            $cmd = "curl --connect-timeout 3 " . getenv("API_URL") . "/api/imds";
+                            $result_json = shell_exec($cmd);
+                            $result = json_decode($result_json, true);
+                            print("<p>Value obtained: " . $result["output"] . ". Go back to the <a href=\"index.php\">Home</a> page</p>");
                         }
                     ?>
                 </div>

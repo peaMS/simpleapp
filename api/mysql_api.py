@@ -331,9 +331,16 @@ def srcipget():
 @app.route("/api/imds", methods=['GET'])
 def imds():
     try:
-        headers = {'Metadata': 'True'}
-        url = 'http://169.254.169.254/metadata/instance?api-version=2017-08-01'
-        msg = requests.get(url, headers=headers, timeout=1).json()
+        url = 'http://169.254.169.254/latest/meta-data/hostname'
+        response = requests.get(url, timeout=1)
+        if response.status_code != 200:
+            msg = {
+                'error': 'Unable to retrieve IMDS data'
+            }
+        else:
+            msg = {
+                'output': response.text
+            }
         return jsonify(msg)
     except Exception as e:
         return jsonify(str(e))

@@ -114,6 +114,25 @@ ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -i "$pemfile" "${user}@${ins
 # Get private IP of the instance (we will need it to connect from the EKS cluster)
 instance1_private_ip=$(aws ec2 describe-instances --instance-id "$instance1_id" --query 'Reservations[*].Instances[*].PrivateIpAddress' --output text) && echo "$instance1_private_ip"
 
+# Test TCP connection to the MySQL server from a remote host
+nc -vz "$instance1_private_ip" 3306   # Should work, since we opened the port in the SG for 0.0.0.0/0
+# Restrict access to the SG of the EKS cluster
+aws ec2 authorize-security-group-ingress --group-id "$sg2_id" --protocol tcp --port 3306 --source-group "$sg1_id"
+# Restrict access to the VPC prefix
+aws ec2 describe-security-group-rules --filters "Name=group-id,Values=$sg1_id" --output text
+sg1_rule_id=$(aws ec2 describe-security-group-rules --filters "Name=group-id,Values=$sg1_id" --query 'SecurityGroupRules[*].[SecurityGroupRuleId, FromPort]' --output text | grep 3306 | awk '{print $1}')
+aws ec2 modify-security-group-rules --group-id $sg1_id --security-group-rules "SecurityGroupRuleId=$sg1_rule_id,SecurityGroupRule={Description='Allow MySQL traffic',IpProtocol=tcp,FromPort=3306,ToPort=3306,CidrIpv4=$vpc_prefix}"
+aws ec2 describe-security-group-rules --filters "Name=group-id,Values=$sg1_id" --output text
+# Test TCP connection to the MySQL server from a remote host
+nc -vz "$instance1_private_ip" 3306   # Should not work any more, since we opened the port in the SG only for $vpc_prefix
+
+# IMDS v1 can be enabled in the instance
+aws ec2 describe-instances --instance-id "$instance1_id" --query 'Reservations[*].Instances[*].MetadataOptions'
+aws ec2 modify-instance-metadata-options --instance-id $instance1_id --http-tokens optional --http-endpoint enabled
+aws ec2 describe-instances --instance-id "$instance1_id" --query 'Reservations[*].Instances[*].MetadataOptions'
+# You can now check the IMDSv1 data with a simple curl command
+ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -i "$pemfile" "${user}@${instance1_pip}" "curl -s4 http://169.254.169.254/latest/meta-data/public-keys"
+
 ######################
 # Deploy EKS cluster #
 ######################
@@ -175,7 +194,8 @@ EOF
 
 # Verify EKS cluster
 eksctl get cluster
-aws eks --region $region update-kubeconfig --name $eks_name
+# aws eks --region $region update-kubeconfig --name $eks_name   # Not required, eksctl does it automatically
+kubectl get nodes -o wide
 
 ######################
 #       K8s app      #
@@ -289,6 +309,13 @@ spec:
   selector:
     run: web
 EOF
+
+# Change IMDS to v1
+# First, locate the inctance names
+eks_node_id=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=${eks_name}*" --query 'Reservations[*].Instances[*].InstanceId' --output text)
+aws ec2 modify-instance-metadata-options --instance-id $eks_node_id --http-tokens optional --http-endpoint enabled
+aws ec2 describe-instances --instance-id "$eks_node_id" --query 'Reservations[*].Instances[*].MetadataOptions'
+
 
 ###############
 #   Cleanup   #
