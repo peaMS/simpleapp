@@ -111,11 +111,12 @@ def send_sql_query(sql_server_fqdn = None, sql_server_db = None, sql_server_user
             # Send query and extract data
             cursor = db.cursor()
             cursor.execute(sql_query)
+            db.commit()
+            db.close()
             # Option 1: first row only
             # data = cursor.fetchone()
             # Option 2: all rows
             rows = cursor.fetchall()
-            data = ''
             app.logger.info('Query "' + sql_query + '" has returned ' + str(len(rows)) + ' rows')
             if len(rows) > 0:
                 row_headers=[x[0] for x in cursor.description]
@@ -125,9 +126,6 @@ def send_sql_query(sql_server_fqdn = None, sql_server_db = None, sql_server_user
                 return json_data
             else:
                 return None
-            # Return value
-            db.close()
-            return str(data)
         except Exception as e:
             error_msg = "Error, something happened when sending a query to a MySQL server"
             app.logger.info(error_msg)
@@ -279,11 +277,10 @@ def srciplog():
             sql_server_username = request.args.get('SQL_SERVER_USERNAME')
             sql_server_password = request.args.get('SQL_SERVER_PASSWORD')
             use_ssl = request.args.get('USE_SSL')
-            # Get source IP from DB
-            # sql_query = 'SELECT host FROM information_schema.processlist WHERE ID=connection_id();'
-            # app.logger.info('Values retrieved from the query: {0}, db {1}: credentials {2}/{3}'.format(str(sql_server_fqdn), str(sql_server_db), str(sql_server_username), str(sql_server_password)))
-            # src_ip_address = str(send_sql_query(sql_server_fqdn=sql_server_fqdn, sql_server_db=sql_server_db, sql_server_username=sql_server_username, sql_server_password=sql_server_password, sql_query=sql_query))
-            src_ip_address = str(request.remote_addr)
+            # Get source IP from the query, or take the source IP from the request
+            src_ip_address = request.args.get('ip')
+            if src_ip_address == None:
+                src_ip_address = str(request.remote_addr)
             # Send query to record IP in the srciplog table
             timestamp = str(datetime.datetime.utcnow())
             sql_query = "INSERT INTO srciplog (ip, timestamp) VALUES ('{0}', '{1}');".format(src_ip_address, timestamp)
