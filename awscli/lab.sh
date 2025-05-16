@@ -180,8 +180,8 @@ vpc:
     public:
       $zone1_name: { id: $subnet1_id }
       $zone2_name: { id: $subnet2_id }
-  securityGroup:
-    id: $sg2_id
+#   securityGroup:
+#     id: $sg2_id
 managedNodeGroups:
   - name: node-group-01
     labels: { role: workers }
