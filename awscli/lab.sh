@@ -69,11 +69,16 @@ aws ec2 associate-route-table --subnet-id "$subnet1_id" --route-table-id "$rt_id
 aws ec2 associate-route-table --subnet-id "$subnet2_id" --route-table-id "$rt_id"
 aws ec2 associate-route-table --subnet-id "$subnet3_id" --route-table-id "$rt_id"
 
-# Create SG
+# Create SGs
 aws ec2 create-security-group --group-name $sg1_name --description "Database SG" --vpc-id "$vpc_id"
 sg1_id=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=$sg1_name" --query 'SecurityGroups[0].GroupId' --output text)
 aws ec2 authorize-security-group-ingress --group-id "$sg1_id" --protocol tcp --port 22 --cidr 0.0.0.0/0
 aws ec2 authorize-security-group-ingress --group-id "$sg1_id" --protocol tcp --port 3306 --cidr 0.0.0.0/0
+aws ec2 create-security-group --group-name $sg2_name --description "Application SG" --vpc-id "$vpc_id"
+sg2_id=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=$sg2_name" --query 'SecurityGroups[0].GroupId' --output text)
+aws ec2 authorize-security-group-ingress --group-id "$sg2_id" --protocol tcp --port 80 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-id "$sg2_id" --protocol tcp --port 8080 --cidr 0.0.0.0/0
+
 
 ######################
 #    EC2 instance    #
@@ -117,7 +122,7 @@ instance1_private_ip=$(aws ec2 describe-instances --instance-id "$instance1_id" 
 # Test TCP connection to the MySQL server from a remote host
 nc -vz "$instance1_private_ip" 3306   # Should work, since we opened the port in the SG for 0.0.0.0/0
 # Restrict access to the SG of the EKS cluster
-aws ec2 authorize-security-group-ingress --group-id "$sg2_id" --protocol tcp --port 3306 --source-group "$sg1_id"
+# aws ec2 authorize-security-group-ingress --group-id "$sg2_id" --protocol tcp --port 3306 --source-group "$sg1_id"
 # Restrict access to the VPC prefix
 aws ec2 describe-security-group-rules --filters "Name=group-id,Values=$sg1_id" --output text
 sg1_rule_id=$(aws ec2 describe-security-group-rules --filters "Name=group-id,Values=$sg1_id" --query 'SecurityGroupRules[*].[SecurityGroupRuleId, FromPort]' --output text | grep 3306 | awk '{print $1}')
@@ -175,6 +180,8 @@ vpc:
     public:
       $zone1_name: { id: $subnet1_id }
       $zone2_name: { id: $subnet2_id }
+  securityGroup:
+    id: $sg2_id
 managedNodeGroups:
   - name: node-group-01
     labels: { role: workers }
@@ -188,9 +195,12 @@ managedNodeGroups:
       allow: true # will use ~/.ssh/id_rsa.pub as the default ssh key
 EOF
 
-# Permissions]
-# https://computingforgeeks.com/grant-developers-access-to-eks-kubernetes-cluster/
-
+# If created with the wrong SG, update to a new SG
+# aws eks update-cluster-config --name $eks_name --resources-vpc-config securityGroupIds=$sg2_id
+# aws eks describe-cluster --name $eks_name --query 'cluster.resourcesVpcConfig' --output json
+# aws eks describe-cluster --name $eks_name --query 'cluster.resourcesVpcConfig.securityGroupIds' --output text
+aws ec2 describe-security-groups --query 'SecurityGroups[*].[GroupId,GroupName]' --output text
+aws eks describe-cluster --name $eks_name --query 'cluster.resourcesVpcConfig.clusterSecurityGroupId' --output text
 
 # Verify EKS cluster
 eksctl get cluster
@@ -316,6 +326,36 @@ eks_node_id=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=${eks_n
 aws ec2 modify-instance-metadata-options --instance-id $eks_node_id --http-tokens optional --http-endpoint enabled
 aws ec2 describe-instances --instance-id "$eks_node_id" --query 'Reservations[*].Instances[*].MetadataOptions'
 
+# Change the database's SG to allow access from the EKS cluster
+# Not working, you cannot change an existing SG rule that references a CIDR block to a security group
+# 1. Test TCP connection to the MySQL server from the EKS cluster
+api_fqdn=$(kubectl get svc api -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -s4 "$api_fqdn:8080/api/sqlversion" | jq -r '.sql_output[0]."VERSION()"'
+# 2. Restrict access to the SG of the EKS cluster
+eks_sg_id=$(aws eks describe-cluster --name $eks_name --query 'cluster.resourcesVpcConfig.clusterSecurityGroupId' --output text)
+aws ec2 modify-security-group-rules --group-id $sg1_id --security-group-rules "SecurityGroupRuleId=$sg1_rule_id,SecurityGroupRule={Description='Allow MySQL traffic',IpProtocol=tcp,FromPort=3306,ToPort=3306,ReferencedGroupId=$eks_sg_id}"
+aws ec2 describe-security-group-rules --filters "Name=group-id,Values=$sg1_id" --output text
+# 3. Test again TCP connection to the MySQL server from the EKS cluster
+api_fqdn=$(kubectl get svc api -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+curl -s4 "$api_fqdn:8080/api/sqlversion" | jq -r '.sql_output[0]."VERSION()"'
+
+# IMDS v1 can be enabled in the instance
+aws ec2 describe-instances --instance-id "$instance1_id" --query 'Reservations[*].Instances[*].MetadataOptions'
+aws ec2 modify-instance-metadata-options --instance-id $instance1_id --http-tokens optional --http-endpoint enabled
+aws ec2 describe-instances --instance-id "$instance1_id" --query 'Reservations[*].Instances[*].MetadataOptions'
+# You can now check the IMDSv1 data with a simple curl command
+ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -i "$pemfile" "${user}@${instance1_pip}" "curl -s4 http://169.254.169.254/latest/meta-data/public-keys"
+
+
+###############
+# Diagnostics #
+###############
+
+# SGs
+aws ec2 describe-security-groups --query 'SecurityGroups[*].[GroupId,GroupName]' --output text
+aws eks describe-cluster --name $eks_name --query 'cluster.resourcesVpcConfig.securityGroupIds' --output text
+aws eks describe-cluster --name $eks_name --query 'cluster.resourcesVpcConfig.clusterSecurityGroupId' --output text
+aws ec2 describe-security-group-rules --filters "Name=group-id,Values=$sg1_id" --output text
 
 ###############
 #   Cleanup   #
