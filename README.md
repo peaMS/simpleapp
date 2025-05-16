@@ -8,6 +8,7 @@ This is a 3-tier app inspired in the [YADA app](https://github.com/Microsoft/YAD
 
 There are many security problems with this architecture. Here a few, please feel free to create issues if you would like to add to the list:
 
+- IMDS v1 doesnt require any auth (tokens), so every pod running in the cluster has access to confidential information.
 - No HTTTPS: dance like nobody is watching, encrypt like everybody is.
 - No IaC: not using IaC prevents you from using tools such as [Checkov](https://checkov.io) to detect security issues before deploying.
 - No Web Application Firewall (WAF): poor application coding makes the app susceptible to web-based attacks such as Cross-Site Scripting (XSS) or SQL Code Injection. There are different ways to add a Web Application Firewall to this design:
