@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: web
+  name: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: web
+  template:
+    metadata:
+      labels:
+        run: web
+    spec:
+      containers:
+      - image: 372476512951.dkr.ecr.eu-central-1.amazonaws.com/mysqlweb:1.0
+        name: web
+        ports:
+        - containerPort: 80
+        env:
+        - name: API_URL
+          value: "http://api:8080"
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    run: web

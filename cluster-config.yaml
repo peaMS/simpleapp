@@ -1,0 +1,29 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: prod-eks-cluster2
+  region: eu-central-1
+  version: "1.32"
+
+vpc:
+  clusterEndpoints:
+    publicAccess: true
+    privateAccess: true
+  subnets:
+    public:
+      eu-central-1a: { id: subnet-0101de6d177bf61e2 }  # replace with real subnet ID
+      eu-central-1b: { id: subnet-0fdf6946a998f64b0 }  # replace with real subnet ID
+
+managedNodeGroups:
+  - name: node-group-01
+    labels: { role: workers }
+    instanceType: t3.small
+    privateNetworking: false
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 2
+    volumeSize: 80
+    ssh:
+      allow: true  # will use ~/.ssh/id_rsa.pub as the default
+      publicKeyName: my-key
