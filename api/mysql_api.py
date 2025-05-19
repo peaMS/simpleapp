@@ -277,16 +277,33 @@ def srciplog():
             sql_server_username = request.args.get('SQL_SERVER_USERNAME')
             sql_server_password = request.args.get('SQL_SERVER_PASSWORD')
             use_ssl = request.args.get('USE_SSL')
+
             # Get source IP from the query, or take the source IP from the request
             src_ip_address = request.args.get('ip')
-            if src_ip_address == None:
-                src_ip_address = str(request.remote_addr)
+            if src_ip_address is None:
+                # Check X-Forwarded-For header for the real client IP
+                if 'X-Forwarded-For' in request.headers:
+                    src_ip_address = request.headers['X-Forwarded-For'].split(',')[0].strip()
+                else:
+                    src_ip_address = str(request.remote_addr)
+
+             # Convert timestamp to CET timezone
+            utc_now = datetime.datetime.utcnow()
+            cet_timezone = pytz.timezone('Europe/Berlin')  # CET timezone
+            cet_now = utc_now.replace(tzinfo=pytz.utc).astimezone(cet_timezone)
+            timestamp = cet_now.strftime('%Y-%m-%d %H:%M:%S')
+
             # Send query to record IP in the srciplog table
             timestamp = str(datetime.datetime.utcnow())
             sql_query = "INSERT INTO srciplog (ip, timestamp) VALUES ('{0}', '{1}');".format(src_ip_address, timestamp)
-            # Send query to retrieve source IP
-            app.logger.info('Values retrieved from the query: {0}, db {1}: credentials {2}/{3}'.format(str(sql_server_fqdn), str(sql_server_db), str(sql_server_username), str(sql_server_password)))
-            sql_output = send_sql_query(sql_server_fqdn=sql_server_fqdn, sql_server_db=sql_server_db, sql_server_username=sql_server_username, sql_server_password=sql_server_password, sql_query=sql_query)
+
+            # Log and execute the query
+            app.logger.info('Values retrieved from the query: {0}, db {1}: credentials {2}/{3}'.format(
+                str(sql_server_fqdn), str(sql_server_db), str(sql_server_username), str(sql_server_password)))
+            sql_output = send_sql_query(sql_server_fqdn=sql_server_fqdn, sql_server_db=sql_server_db,
+                                        sql_server_username=sql_server_username, sql_server_password=sql_server_password,
+                                        sql_query=sql_query)
+
             # Output
             msg = {
                 'srciplog': {
@@ -294,10 +311,10 @@ def srciplog():
                     'timestamp': timestamp,
                     'sql_output': sql_output
                 }
-            }          
+            }
             return jsonify(msg)
         except Exception as e:
-          return jsonify(str(e))
+            return jsonify(str(e))
 
 # Stores the source IP in a table in the database
 @app.route("/api/srcipget", methods=['GET'])
@@ -355,45 +372,58 @@ def printenv():
             return jsonify(str(e))
 
 # Flask route to connect to MySQL
-@app.route("/api/mysql", methods=['GET'])
-def mysql():
+@app.route("/api/srciplog", methods=['GET'])
+def srciplog():
     if request.method == 'GET':
-        sql_query = 'SELECT @@VERSION'
         try:
-            # Get variables
-            mysql_fqdn = request.args.get('SQL_SERVER_FQDN') or get_variable_value('SQL_SERVER_FQDN')
-            mysql_user = request.args.get('SQL_SERVER_USERNAME') or get_variable_value('SQL_SERVER)USERNAME')
-            mysql_pswd = request.args.get('SQL_SERVER_PASSWORD') or get_variable_value('SQL_SERVER_PASSWORD')
-            mysql_db = request.args.get('SQL_SERVER_DB') or get_variable_value('SQL_SERVER_DB')
-            app.logger.info('Values to connect to MySQL:')
-            app.logger.info(mysql_fqdn)
-            app.logger.info(mysql_db)
-            app.logger.info(mysql_user)
-            app.logger.info(mysql_pswd)
-            # The user must be in the format user@server
-            mysql_name = mysql_fqdn.split('.')[0]
-            if mysql_name:
-                mysql_user = mysql_user + '@' + mysql_name
-            else:
-                return "MySql server name could not be retrieved out of FQDN"
-            # Different connection strings if using a database or not
-            if mysql_db == None:
-                app.logger.info('Connecting to mysql server ' + str(mysql_fqdn) + ', username ' + str(mysql_user) + ', password ' + str(mysql_pswd))
-                db = pymysql.connect(mysql_fqdn, mysql_user, mysql_pswd)
-            else:
-                app.logger.info('Connecting to mysql server ' + str(mysql_fqdn) + ', database ' + str(mysql_db) + ', username ' + str(mysql_user) + ', password ' + str(mysql_pswd))
-                db = pymysql.connect(mysql_fqdn, mysql_user, mysql_pswd, mysql_db)
-            # Send query and extract data
-            cursor = db.cursor()
-            cursor.execute("SELECT VERSION()")
-            data = cursor.fetchone()
-            app.logger.info('Closing SQL connection...') 
-            db.close()
+            # Get variables from the request
+            sql_server_fqdn = request.args.get('SQL_SERVER_FQDN')
+            sql_server_db = request.args.get('SQL_SERVER_DB')
+            sql_server_username = request.args.get('SQL_SERVER_USERNAME')
+            sql_server_password = request.args.get('SQL_SERVER_PASSWORD')
+            use_ssl = request.args.get('USE_SSL')
+
+            # Get source IP from the query, or take the source IP from the request
+            src_ip_address = request.args.get('ip')
+            if src_ip_address is None:
+                # Check X-Forwarded-For header for the real client IP
+                if 'X-Forwarded-For' in request.headers:
+                    src_ip_address = request.headers['X-Forwarded-For'].split(',')[0].strip()
+                else:
+                    src_ip_address = str(request.remote_addr)
+
+            app.logger.info(f"Source IP Address: {src_ip_address}")
+
+            # Convert timestamp to CET timezone
+            utc_now = datetime.datetime.utcnow()
+            cet_timezone = pytz.timezone('Europe/Berlin')  # CET timezone
+            cet_now = utc_now.replace(tzinfo=pytz.utc).astimezone(cet_timezone)
+            timestamp = cet_now.strftime('%Y-%m-%d %H:%M:%S')
+
+            app.logger.info(f"UTC Time: {utc_now}, CET Time: {cet_now}")
+
+            # Send query to record IP in the srciplog table
+            sql_query = "INSERT INTO srciplog (ip, timestamp) VALUES ('{0}', '{1}');".format(src_ip_address, timestamp)
+            app.logger.info(f"SQL Query: {sql_query}")
+
+            # Log and execute the query
+            sql_output = send_sql_query(sql_server_fqdn=sql_server_fqdn, sql_server_db=sql_server_db,
+                                        sql_server_username=sql_server_username, sql_server_password=sql_server_password,
+                                        sql_query=sql_query)
+
+            app.logger.info(f"SQL Output: {sql_output}")
+
+            # Output
             msg = {
-                'sql_output': str(data)
-            }          
+                'srciplog': {
+                    'ip': src_ip_address,
+                    'timestamp': timestamp,
+                    'sql_output': sql_output
+                }
+            }
             return jsonify(msg)
         except Exception as e:
+            app.logger.error(f"Error: {str(e)}")
             return jsonify(str(e))
 
 # Ignore warnings

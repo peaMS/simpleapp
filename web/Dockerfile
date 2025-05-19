@@ -26,4 +26,4 @@ RUN echo '{"health": "OK"}' >/var/www/html/healthcheck.html
 RUN echo "<?php phpinfo() ?>" > /var/www/html/healthcheck.php
 
 # By default start up apache in the foreground, override with /bin/bash for interactive.
-CMD /usr/sbin/php-fpm -D; /usr/sbin/httpd -D FOREGROUND
+CMD ["/bin/sh", "-c", "/usr/sbin/php-fpm -D && /usr/sbin/httpd -D FOREGROUND"]
